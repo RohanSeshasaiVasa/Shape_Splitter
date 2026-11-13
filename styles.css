@@ -1,0 +1,52 @@
+:root {
+    --wood: #b98552;
+    --wood-light: #d3a26c;
+    --wood-dark: #8f5f33;
+    --seam: rgba(58, 33, 14, 0.55);
+    --plank: 120px;
+}
+
+html, body {
+    height: 100%;
+    margin: 0;
+}
+
+body {
+    overflow: hidden;
+    background-color: var(--wood);
+    background-image: radial-gradient(ellipse at center, transparent 45%, rgba(40, 26, 6, 0.5) 100%),
+    repeating-linear-gradient(
+        to bottom,
+        transparent 0 calc(var(--plank) - 3px),
+        var(--seam) calc(var(--plank) - 3px) var(--plank)
+    ),
+    repeating-linear-gradient(
+        178deg,
+        rgba(255, 240, 220, 0.07) 0 2px,
+        transparent 2px 7px,
+        rgba(70, 40, 15, 0.08) 7px 9px,
+        transparent 9px 15px,
+        rgba(70, 40, 15, 0.05)
+        transparent 16px 23px
+    ),
+    linear-gradient(
+        97deg,
+        var(--wood-light),
+        var(--wood) 30%,
+        var(--wood-light) 55%,
+        var(--wood) 80%,
+        var(--wood-dark)
+    );
+}
+
+#game {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+    cursor: crosshair;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+}
