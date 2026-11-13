@@ -13,6 +13,9 @@ const GRAVITY = 500;
 const PIECE_LIFE = 1;
 const GOOD_CUT = 45;
 const LABEL_LIFE = 1.2;
+const ROUND_TIME = 60;
+const RESTART_DELAY = 1;
+const SHAPE_SIZE = 60;
 
 function resizeCanvas() {
     canvas.width = window.innerWidth;
@@ -23,6 +26,88 @@ function resizeCanvas() {
 resizeCanvas();
 window.addEventListener('resize', resizeCanvas);
 
+function fitToCircle(points){
+    let minX = Infinity;
+    let maxX = -Infinity;
+    let minY = Infinity;
+    let maxY = -Infinity;
+    for (const [x, y] of points){
+        minX = Math.min(minX, x);
+        maxX = Math.max(maxX, x);
+        minY = Math.min(minY, y);
+        maxY = Math.max(maxY, y);
+    }
+    const midX = (minX + maxX) /2;
+    const midY = (minY + maxY) /2;
+
+    let furthest = 0;
+    for(const [x, y] of points){
+        furthest = Math.max(furthest, Math.hypot(x - midX, y - midY));
+    }
+    return points.map(([x, y]) => ({x: (x - midX) / furthest, y: (y - midY) / furthest }));
+}
+
+function regularPolygon(corners) {
+    const points = [];
+    for(let i =0; i < corners; i++){
+        const angle = (i/corners) * Math.PI * 2;
+        points.push([Math.cos(angle), Math.sin(angle)]);
+    }
+    return points;
+}
+
+function starShape(spikes, dip){
+    const points = [];
+    for (let i = 0; i< spikes * 2; i++){
+        const angle = (i / (spikes * 2)) * Math.PI * 2;
+        const distance = i % 2 === 0? 1: dip;
+        points.push([Math.cos(angle) * distance, Math.sin(angle) * distance]);
+    }
+    return points;
+}
+
+function heartShape() {
+    const points = [];
+    for (let i = 0; i<48; i++){
+        const t = (i / 48) * Math.PI * 2;
+        const x = 16 * Math.pow(Math.sin(t), 3);
+        const y = -(13 * Math.cos(t) -5 * Math.cos(2*t) - 2* Math.cos(3*t) - Math.cos(4 *t));
+        points.push([x, y]);
+    }
+    return points;
+}
+
+const REGULAR_SHAPES = [
+    { name: 'circle',    color: '#3fa7d6', points: fitToCircle(regularPolygon(48)) },
+    { name: 'triangle',  color: '#f2c14e', points: fitToCircle(regularPolygon(3)) },
+    { name: 'square',    color: '#e4572e', points: fitToCircle(regularPolygon(4)) },
+    { name: 'rectangle', color: '#8e6ccf', points: fitToCircle([[0, 0], [2, 0], [2, 1], [0, 1]]) },
+    { name: 'pentagon',  color: '#4cb944', points: fitToCircle(regularPolygon(5)) },
+    { name: 'hexagon',   color: '#f78ca2', points: fitToCircle(regularPolygon(6)) },
+];
+
+const IRREGULAR_SHAPES = [
+    { name: 'star',      color: '#ffd23f', points: fitToCircle(starShape(5, 0.45)) },
+    { name: 'heart',     color: '#e63946', points: fitToCircle(heartShape()) },
+    { name: 'arrow',     color: '#3fa7d6', points: fitToCircle([[0, 1], [4, 1], [4, 0], [6, 2], [4, 4], [4, 3], [0, 3]]) },
+    { name: 'lightning', color: '#f2c14e', points: fitToCircle([[3, 0], [0, 5], [2, 5], [1, 9], [5, 3], [3, 3], [4.5, 0]]) },
+    { name: 'cross',     color: '#4cb944', points: fitToCircle([[1, 0], [2, 0], [2, 1], [3, 1], [3, 2], [2, 2], [2, 3], [1, 3], [1, 2], [0, 2], [0, 1], [1, 1]]) },
+    { name: 'L-shape',   color: '#8e6ccf', points: fitToCircle([[0, 0], [1, 0], [1, 2], [2, 2], [2, 3], [0, 3]]) },
+];
+
+function pickDesign() {
+    const all = REGULAR_SHAPES.concat(IRREGULAR_SHAPES);
+    return all[Math.floor(Math.random() * all.length)];
+}
+
+function traceShape(points, centerX, centerY){
+    ctx.beginPath();
+    ctx.moveTo(centerX + points[0].x, centerY + points[0].y);
+    for (let i = 1; i < points.length; i++){
+        ctx.lineTo(centerX + points[i].x, centerY + points[i].y);
+    }
+    ctx.closePath();
+}
 const line = {
     startX: 0,
     startY: 0,
@@ -35,6 +120,10 @@ const line = {
 let hideTimer = null
 
 canvas.addEventListener('pointerdown', (e) => {
+    if (gameState === 'over'){
+        if (overTime > RESTART_DELAY) restartGame();
+        return;
+    }
     clearTimeout(hideTimer);
     line.isDrawing = true;
     line.startX = e.offsetX;
@@ -79,13 +168,27 @@ function drawLine() {
 const shape = {
     x: 0,
     y: 0,
-    radius: 50,
+    radius: SHAPE_SIZE,
     speed: FAST_SPEED,
     color: '#3fa7d6',
+    name: '',
+    points: [],
     alive: true,
 };
 
 function resetShape() {
+    const design = pickDesign();
+    const turn = Math.random() * Math.PI * 2;
+    const cos = Math.cos(turn);
+    const sin = Math.sin(turn);
+
+    shape.name = design.name;
+    shape.color = design.color;
+    shape.points = design.points.map((p) => ({
+        x: (p.x * cos - p.y * sin) * shape.radius,
+        y: (p.x * sin + p.y * cos) * shape.radius,
+    }));
+
     shape.x = -shape.radius;
     shape.y = canvas.height * (0.2 + Math.random() * 0.6);
     shape.speed = FAST_SPEED;
@@ -111,38 +214,45 @@ function drawShape() {
     if (!shape.alive) return;
 
     ctx.fillStyle = shape.color;
-    ctx.beginPath();
-    ctx.arc(shape.x, shape.y, shape.radius, 0, Math.PI * 2);
+    traceShape(shape.points, shape.x, shape.y);
     ctx.fill();
 }
 
-function distanceToLine(px, py, x1, y1, x2, y2) {
-    const dx = x2 - x1;
-    const dy = y2 - y1;
-    const lengthSquared = dx*dx + dy *dy;
+function lineCrossings() {
+    const dx = line.endX - line.startX;
+    const dy = line.endY - line.startY;
+    const crossings = [];
 
-    if(lengthSquared === 0) {
-        return Math.hypot(px -x1,py -y1);
+    for (let i = 0; i < shape.points.length; i++){
+        const corner = shape.points[i];
+        const next = shape.points[(i + 1) % shape.points.length];
+        const ax = shape.x + corner.x;
+        const ay = shape.y+ corner.y;
+        const ex = next.x - corner.x;
+        const ey = next.y - corner.y;
+        const denom = dx * ey - dy * ex;
+        if(denom === 0) continue;
+
+        const wx = ax - line.startX;
+        const wy = ay - line.startY;
+        const alongLine = (wx * ey - wy * ex)/ denom;
+        const alongEdge = (wx * dy - wy * dx) / denom;
+        if (alongEdge >= 0 && alongEdge < 1) {
+            crossings.push(alongLine);
+        }
     }
-    let t = ((px-x1) * dx + (py-y1) *dy) / lengthSquared;
-    t = Math.max(0, Math.min(1, t));
-
-    const closestX = x1 + t * dx;
-    const closestY = y1 + t * dy;
-    return Math.hypot(px - closestX, py - closestY);
+    return crossings;
 }
 
 function lineCutsShape() {
-    const startDistance = Math.hypot(line.startX - shape.x, line.startY - shape.y);
-    const endDistance = Math.hypot(line.endX - shape.x, line.endY - shape.y);
-    const startsOutside = startDistance > shape.radius;
-    const endsOutside = endDistance > shape.radius;
-
-    const passesThrough = 
-        distanceToLine(shape.x, shape.y, line.startX, line.startY, line.endX, line.endY) < shape.radius;
-
-    return startsOutside && endsOutside && passesThrough;   
+    const crossings = lineCrossings();
+    if (crossings.length === 0) return false;
+    const first = Math.min(...crossings);
+    const last = Math.max(...crossings);
+    return first > 0 && last < 1;
 }
+
+let respawnTimer = null;
 
 function cutShape() {
     const result = measureCut();
@@ -150,7 +260,7 @@ function cutShape() {
     changeScore(result.small >= GOOD_CUT ? 1 : -1);
     splitShape();
     shape.alive = false;
-    setTimeout(resetShape, RESPAWN_DELAY);
+    respawnTimer = setTimeout(resetShape, RESPAWN_DELAY);
 }
 
 const pieces = [];
@@ -174,6 +284,7 @@ function splitShape() {
             y: shape.y,
             radius: shape.radius,
             color: shape.color,
+            points: shape.points,
             side: side,
             cutX: cutX,
             cutY: cutY,
@@ -223,8 +334,7 @@ function drawPieces() {
         ctx.closePath();
         ctx.clip();
         ctx.fillStyle = piece.color;
-        ctx.beginPath();
-        ctx.arc(0, 0, piece.radius, 0, Math.PI * 2);
+        traceShape(piece.points, 0, 0);
         ctx.fill();
         ctx.clip(); // now drawing is also limited to the circle
         ctx.strokeStyle = 'rgba(255, 255, 255, 0.6)';
@@ -237,13 +347,45 @@ function drawPieces() {
     }
 }
 
-function measureCut() {
-    const r = shape.radius;
-    const d = distanceToLine(shape.x, shape.y, line.startX, line.startY, line.endX, line.endY);
-    const smallArea = r * r * Math.acos(d/r) -d * Math.sqrt(r*r-d*d);
-    const totalArea = Math.PI * r * r;
+function sideOfLine(px, py) {
+    return (line.endX - line.startX) * (py - line.startY) - (line.endY - line.startY) * (px - line.startX);
+}
 
-    const small = Math.round((smallArea/totalArea) * 100);
+function polygonArea(points) {
+    let sum = 0;
+    for (let i = 0; i < points.length; i++) {
+        const a = points[i];
+        const b = points [(i + 1) % points.length];
+        sum += a.x * b.y - b.x * a.y;
+    }
+    return Math.abs(sum) / 2;
+}
+
+function partOnOneSide(points) {
+    const part = [];
+    for (let i = 0; i < points.length; i++){
+        const a = points[i];
+        const b = points[(i + 1) % points.length];
+        const sideA = sideOfLine(a.x, a.y);
+        const sideB = sideOfLine(b.x, b.y);
+
+        if (sideA >= 0) {
+            part.push(a);
+        }
+        if ((sideA >= 0) !== (sideB >= 0)) {
+            const t = sideA / (sideA - sideB);
+            part.push({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t });
+        }
+    }
+    return part;
+}
+
+function measureCut() {
+    const points = shape.points.map((p) => ({ x: shape.x + p.x, y: shape.y + p.y }));
+    const total = polygonArea(points);
+    const oneSide = polygonArea(partOnOneSide(points));
+    const smaller = Math.min(oneSide, total - oneSide);
+    const small = Math.round((smaller / total) * 100);
     return { small: small, big: 100 - small };
 }
 
@@ -336,6 +478,87 @@ function drawScore() {
     ctx.restore();
 }
 
+let gameState = 'playing';
+let timeLeft = ROUND_TIME;
+let overTime = 0;
+
+function updateTimer(dt) {
+    if (gameState === 'playing') {
+        timeLeft -= dt;
+        if (timeLeft <= 0) {
+            timeLeft = 0;
+            endRound();
+        }
+    } else {
+        overTime += dt;
+    }
+}
+
+function endRound() {
+    gameState = 'over';
+    overTime = 0;
+    shape.alive = false
+    clearTimeout(respawnTimer);
+    line.isDrawing = false;
+    line.visible = false;
+}
+
+function restartGame() {
+    score = 0;
+    timeLeft = ROUND_TIME;
+    pieces.length = 0;
+    labels.length = 0;
+    gameState = 'playing';
+    resetShape();
+}
+
+function drawTimer() {
+    ctx.save();
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'top';
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = 'rgba(40, 20, 5, 0.85)';
+    const x = canvas.width - 24;
+    ctx.font = 'bold 16px system-ui, sans-serif';
+    ctx.lineWidth = 4;
+    ctx.strokeText('TIME', x, 20);
+    ctx.fillStyle = '#f3e6d3';
+    ctx.fillText('TIME', x, 20);
+    const seconds = String(Math.ceil(timeLeft));
+    ctx.font = 'bold 48px system-ui, sans-serif';
+    ctx.lineWidth = 6;
+    ctx.strokeText(seconds, x, 40);
+    ctx.fillStyle = timeLeft <= 10 ? '#ff7b6b' : '#f3e6d3';
+    ctx.fillText(seconds, x, 40);
+    ctx.restore();
+}
+
+function drawGameOver() {
+    const cx = canvas.width / 2;
+    const cy = canvas.height / 2;
+    ctx.save();
+    ctx.fillStyle = 'rgba(30, 15, 5, 0.6)';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = 'rgba(40, 20, 5, 0.85)';
+    ctx.fillStyle = '#f3e6d3';
+    ctx.font = 'bold 64px system-ui, sans-serif';
+    ctx.lineWidth = 8;
+    ctx.strokeText("Time's up!!", cx, cy - 70);
+    ctx.fillText("Time's up!!", cx, cy - 70);
+    ctx.font = 'bold 40px system-ui, sans-serif';
+    ctx.lineWidth = 6;
+    ctx.strokeText('Score: ' + score, cx, cy + 10);
+    ctx.fillText('Score: ' + score, cx, cy + 10);
+    if (overTime > RESTART_DELAY){
+        ctx.font = '24px system-ui, sans-serif';
+        ctx.fillText('Click to play again', cx, cy + 80);
+    }
+    ctx.restore();
+}
+
 let lastTime = 0;
 
 function gameLoop(time) {
@@ -345,12 +568,18 @@ function gameLoop(time) {
     updatePieces(dt);
     updateLabels(dt);
     updateScore(dt);
+    updateTimer(dt);
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     drawPieces();
     drawShape();
     drawLine();
     drawLabels();
     drawScore();
+    drawTimer();
+
+    if (gameState === 'over') {
+        drawGameOver();
+    }
 
     requestAnimationFrame(gameLoop);
 }
