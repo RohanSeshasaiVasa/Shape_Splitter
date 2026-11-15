@@ -16,6 +16,7 @@ const LABEL_LIFE = 1.2;
 const ROUND_TIME = 60;
 const RESTART_DELAY = 1;
 const SHAPE_SIZE = 60;
+const NEXT_LEVEL_DELAY = 2;
 
 function resizeCanvas() {
     canvas.width = window.innerWidth;
@@ -95,9 +96,58 @@ const IRREGULAR_SHAPES = [
     { name: 'L-shape',   color: '#8e6ccf', points: fitToCircle([[0, 0], [1, 0], [1, 2], [2, 2], [2, 3], [0, 3]]) },
 ];
 
+let level = 1;
+let passed = false;
+
+function levelTarget() {
+    return 4 + level;
+}
+
+function levelRadius() {
+    return Math.max(36, SHAPE_SIZE - (level - 1) * 4);
+}
+
+function levelSlowSpeed() {
+    return SLOW_SPEED * (1 + (level - 1) * 0.2);
+}
+
 function pickDesign() {
-    const all = REGULAR_SHAPES.concat(IRREGULAR_SHAPES);
-    return all[Math.floor(Math.random() * all.length)];
+    let list;
+    if(level <= 2){
+        list = REGULAR_SHAPES;
+    } else if (level <= 4){
+        list = Math.random() < 0.5 ? REGULAR_SHAPES : IRREGULAR_SHAPES;
+
+    } else {
+        list = Math.random() < 0.75 ? IRREGULAR_SHAPES : REGULAR_SHAPES;
+    }
+    return list[Math.floor(Math.random() * list.length)];
+}
+
+function drawLevel() {
+    const x = canvas.width / 2;
+
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = 'rgba(40, 20, 5, 0.85)';
+    ctx.font = 'bold 16px system-ui, sans-serif';
+    ctx.lineWidth = 4;
+    ctx.strokeText('LEVEL', x, 20);
+    ctx.fillStyle = '#f3e6d3';
+    ctx.fillText('LEVEL', x, 20);
+    ctx.font = 'bold 48px system-ui, sans-serif';
+    ctx.lineWidth = 6;
+    ctx.strokeText(String(level), x, 40);
+    ctx.fillText(String(level), x, 40);
+    const goal = 'Goal ' + levelTarget();
+    ctx.font = 'bold 16px system-ui, sans-serif';
+    ctx.lineWidth = 4;
+    ctx.strokeText(goal, x, 94);
+    ctx.fillStyle = score >= levelTarget() ? '#7ee081' : '#f3e6d3';
+    ctx.fillText(goal, x, 94);
+    ctx.restore();
 }
 
 function traceShape(points, centerX, centerY){
@@ -173,10 +223,15 @@ const shape = {
     color: '#3fa7d6',
     name: '',
     points: [],
+    dirX: 1,
+    dirY: 0,
+    span: 0,
+    travelled: 0,
     alive: true,
 };
 
 function resetShape() {
+    shape.radius = levelRadius();
     const design = pickDesign();
     const turn = Math.random() * Math.PI * 2;
     const cos = Math.cos(turn);
@@ -189,8 +244,30 @@ function resetShape() {
         y: (p.x * sin + p.y * cos) * shape.radius,
     }));
 
-    shape.x = -shape.radius;
-    shape.y = canvas.height * (0.2 + Math.random() * 0.6);
+    const entry = Math.floor(Math.random() * 4);
+    if (entry === 0) {
+        shape.x = -shape.radius;
+        shape.y = canvas.height * (0.2 + Math.random() * 0.6);
+        shape.dirX = 1;
+        shape.dirY = 0;
+    } else if (entry === 1){
+        shape.x = canvas.width + shape.radius;
+        shape.y = canvas.height * (0.2 + Math.random() * 0.6);
+        shape.dirX = -1;
+        shape.dirY = 0;
+    } else if (entry === 2){
+        shape.x = canvas.width * (0.2 + Math.random() * 0.6);
+        shape.y = -shape.radius;
+        shape.dirX = 0;
+        shape.dirY = 1;
+    } else {
+        shape.x = canvas.width * (0.2 + Math.random() * 0.6);
+        shape.y = canvas.height + shape.radius;
+        shape.dirX = 0;
+        shape.dirY = -1;
+    }
+    shape.span = shape.dirX !== 0 ?canvas.width : canvas.height;
+    shape.travelled = 0;
     shape.speed = FAST_SPEED;
     shape.alive = true;
 }
@@ -199,12 +276,21 @@ resetShape();
 function updateShape(dt) {
     if (!shape.alive) return;
     
-    if (shape.x > shape.radius) {
-        shape.speed += (SLOW_SPEED - shape.speed) * Math.min(1, BRAKING * dt);
+    if (shape.travelled > shape.radius * 2) {
+        shape.speed += (levelSlowSpeed() - shape.speed) * Math.min(1, BRAKING * dt);
 
     }
-    shape.x += shape.speed * canvas.width * dt;
-    if (shape.x - shape.radius > canvas.width) {
+    const step = shape.speed * shape.span * dt;
+    shape.x += shape.dirX * step;
+    shape.y += shape.dirY * step;
+    shape.travelled += step;
+    const offScreen = 
+        shape.x + shape.radius < 0 ||
+        shape.x - shape.radius > canvas.width ||
+        shape.y + shape.radius < 0 ||
+        shape.y - shape.radius > canvas.height;
+
+    if (shape.travelled > shape.radius * 2 && offScreen){
         missShape();
         resetShape();
     }
@@ -261,6 +347,10 @@ function cutShape() {
     splitShape();
     shape.alive = false;
     respawnTimer = setTimeout(resetShape, RESPAWN_DELAY);
+
+    if (score >= levelTarget()) {
+        endRound();
+    }
 }
 
 const pieces = [];
@@ -292,8 +382,8 @@ function splitShape() {
             dirY: dirY,
             normalX: normalX,
             normalY: normalY,
-            vx: shape.speed * canvas.width + normalX * side * PIECE_SPEED,
-            vy: normalY * side * PIECE_SPEED,
+            vx: shape.dirX * shape.speed * shape.span + normalX * side * PIECE_SPEED,
+            vy: shape.dirY * shape.speed * shape.span + normalY * side * PIECE_SPEED,
             angle: 0,
             spin: side * PIECE_SPIN,
             life: PIECE_LIFE,
@@ -445,8 +535,8 @@ function missShape() {
     labels.push({
         text: 'Missed',
         good: false,
-        x: canvas.width - 80,
-        y: shape.y,
+        x: Math.min(Math.max(shape.x, 80), canvas.width - 80),
+        y: Math.min(Math.max(shape.y, 150), canvas.height - 30),
         life: LABEL_LIFE,
     });
 }
@@ -491,11 +581,15 @@ function updateTimer(dt) {
         }
     } else {
         overTime += dt;
+        if (passed && overTime > NEXT_LEVEL_DELAY){
+            restartGame();
+        }
     }
 }
 
 function endRound() {
     gameState = 'over';
+    passed = score >= levelTarget();
     overTime = 0;
     shape.alive = false
     clearTimeout(respawnTimer);
@@ -509,6 +603,7 @@ function restartGame() {
     pieces.length = 0;
     labels.length = 0;
     gameState = 'playing';
+    if (passed) level += 1;
     resetShape();
 }
 
@@ -536,6 +631,9 @@ function drawTimer() {
 function drawGameOver() {
     const cx = canvas.width / 2;
     const cy = canvas.height / 2;
+    const title = passed ? 'Level ' + level + ' cleared!' : "Time's up";
+    const detail = passed ? 'Time left: ' + Math.ceil(timeLeft) + 's' : 'Score ' + score + ' of  ' + levelTarget();
+    const action = passed ? 'Level ' + (level + 1) + ' starting...' : 'Click to try again';
     ctx.save();
     ctx.fillStyle = 'rgba(30, 15, 5, 0.6)';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -543,20 +641,84 @@ function drawGameOver() {
     ctx.textBaseline = 'middle';
     ctx.lineJoin = 'round';
     ctx.strokeStyle = 'rgba(40, 20, 5, 0.85)';
-    ctx.fillStyle = '#f3e6d3';
-    ctx.font = 'bold 64px system-ui, sans-serif';
+    const titleSize = Math.min(64, canvas.width / 11);
+    ctx.font = 'bold ' + titleSize + 'px system-ui, sans-serif';
     ctx.lineWidth = 8;
-    ctx.strokeText("Time's up!!", cx, cy - 70);
-    ctx.fillText("Time's up!!", cx, cy - 70);
-    ctx.font = 'bold 40px system-ui, sans-serif';
+    ctx.strokeText(title, cx, cy - 70);
+    ctx.fillStyle = passed ? '#7ee081' : '#f3e6d3';
+    ctx.fillText(title, cx, cy - 70);
+    ctx.font = 'bold 36px system-ui, sans-serif';
     ctx.lineWidth = 6;
-    ctx.strokeText('Score: ' + score, cx, cy + 10);
-    ctx.fillText('Score: ' + score, cx, cy + 10);
-    if (overTime > RESTART_DELAY){
+    ctx.strokeText(detail, cx, cy + 10);
+    ctx.fillStyle = '#f3e6d3';
+    ctx.fillText(detail, cx, cy + 10);
+    if (passed || overTime > RESTART_DELAY) {
         ctx.font = '24px system-ui, sans-serif';
-        ctx.fillText('Click to play again', cx, cy + 80);
+        ctx.fillText(action, cx, cy + 80);
     }
     ctx.restore();
+}
+
+let audio = null;
+
+function startAudio() {
+    if (!audio) {
+        audio = new AudioContext();
+    }
+    if (audio.state === 'suspended'){
+        audio.resume();
+    }
+}
+
+function playTone(startPitch, endPitch, seconds, type, volume, delay = 0){
+    if (!audio) return;
+    const start = audio.currentTime + delay;
+
+    const note = audio.createOscillator();
+    const fader = audio.createGain();
+    note.type = type;
+    note.frequency.setValueAtTime(startPitch, start);
+    note.frequency.exponentialRampToValueAtTime(endPitch, start + seconds);
+    fader.gain.setValueAtTime(volume, start);
+    fader.gain.exponentialRampToValueAtTime(0.001, start + seconds);
+    note.connect(fader);
+    fader.connect(audio.destination);
+    note.start(start);
+    note.stop(start + seconds);
+}
+
+function playCutSound() {
+    if (!audio) return;
+    const start = startAudio.currentTime;
+    const seconds = 0.18;
+    const clip = audio.createBuffer(1, Math.floor(audio.sampleRate * seconds), audio.sampleRate);
+    const samples = clip.getChannelData(0);
+    for(let i = 0; i < samples.length; i++) {
+        samples[i] = Math.random() * 2 - 1;
+    }
+    const hiss = audio.createBufferSource();
+    hiss.buffer = clip;
+    const filter = audio.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.setValueAtTime(3000, start);
+    filter.frequency.exponentialRampToValueAtTime(500, start + seconds);
+    const fader = audio.createGain();
+    fader.gain.setValueAtTime(0.5, start);
+    fader.gain.exponentialRampToValueAtTime(0.001, start + seconds);
+
+    hiss.connect(filter);
+    filter.connect(fader);
+    fader.connect(audio.destination);
+    hiss.start(start);
+}
+
+function playGodSound(){
+    playTone(660, 660, 0.12, 'triangle', 0.25, 0.05);
+    playTone(990, 990, 0.2, 'triangle', 0.25, 0.13);
+}
+
+function playBadSound() {
+    
 }
 
 let lastTime = 0;
@@ -576,6 +738,7 @@ function gameLoop(time) {
     drawLabels();
     drawScore();
     drawTimer();
+    drawLevel();
 
     if (gameState === 'over') {
         drawGameOver();
