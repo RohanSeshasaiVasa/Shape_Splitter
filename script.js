@@ -170,6 +170,10 @@ const line = {
 let hideTimer = null
 
 canvas.addEventListener('pointerdown', (e) => {
+    startAudio();
+
+    if (gameState === 'menu') return;
+
     if (gameState === 'over'){
         if (overTime > RESTART_DELAY) restartGame();
         return;
@@ -344,6 +348,21 @@ function cutShape() {
     const result = measureCut();
     showRatio(result);
     changeScore(result.small >= GOOD_CUT ? 1 : -1);
+
+    playCutSound();
+    if (result.small >= GOOD_CUT){
+        playGoodSound();
+        showFlash('good');
+    } else {
+        playBadSound();
+        showFlash('bad');
+        shakeScreen();
+    }
+
+    if (result.small === 50) {
+        showPerfect(shape.x, shape.y + shape.radius + 30);
+    }
+
     splitShape();
     shape.alive = false;
     respawnTimer = setTimeout(resetShape, RESPAWN_DELAY);
@@ -532,6 +551,9 @@ function changeScore(amount) {
 
 function missShape() {
     changeScore(-1);
+    playMissSound();
+    showFlash('bad');
+    shakeScreen();
     labels.push({
         text: 'Missed',
         good: false,
@@ -568,7 +590,7 @@ function drawScore() {
     ctx.restore();
 }
 
-let gameState = 'playing';
+let gameState = 'menu';
 let timeLeft = ROUND_TIME;
 let overTime = 0;
 
@@ -590,6 +612,13 @@ function updateTimer(dt) {
 function endRound() {
     gameState = 'over';
     passed = score >= levelTarget();
+
+    if (passed) {
+        playClearSound();
+    } else {
+        playTimesUpSound();
+    }
+
     overTime = 0;
     shape.alive = false
     clearTimeout(respawnTimer);
@@ -689,7 +718,7 @@ function playTone(startPitch, endPitch, seconds, type, volume, delay = 0){
 
 function playCutSound() {
     if (!audio) return;
-    const start = startAudio.currentTime;
+    const start = audio.currentTime;
     const seconds = 0.18;
     const clip = audio.createBuffer(1, Math.floor(audio.sampleRate * seconds), audio.sampleRate);
     const samples = clip.getChannelData(0);
@@ -712,20 +741,78 @@ function playCutSound() {
     hiss.start(start);
 }
 
-function playGodSound(){
+function playGoodSound(){
     playTone(660, 660, 0.12, 'triangle', 0.25, 0.05);
     playTone(990, 990, 0.2, 'triangle', 0.25, 0.13);
 }
 
 function playBadSound() {
-    
+    playTone(220, 110, 0.25, 'square', 0.1, 0.05);
 }
+
+function playMissSound() {
+    playTone(150, 50, 0.3, 'sine', 0.5);
+}
+
+function playClearSound() {
+    const notes = [523, 659, 784, 1047];
+    for (let i = 0; i < notes.length; i++){
+        playTone(notes[i], notes[i], 0.25, 'triangle', 0.25, i * 0.1);
+    }
+}
+
+function playTimesUpSound() {
+    const notes = [392, 330, 262];
+    for (let i = 0; i < notes.length; i++) {
+        playTone(notes[i], notes[i], 0.3, 'triangle', 0.25, i * 0.15);
+    } 
+}
+
+const flashLayer = document.getElementById('flash');
+const perfectText = document.getElementById('perfect');
+
+function shakeScreen() {
+    canvas.classList.remove('shake');
+    void canvas.offsetWidth;
+    canvas.classList.add('shake');
+}
+
+function showFlash(kind) {
+    flashLayer.className = '';
+    void flashLayer.offsetWidth;
+    flashLayer.className = kind;
+}
+
+function showPerfect(x, y) {
+    perfectText.style.left = x + 'px';
+    perfectText.style.top = y + 'px';
+    perfectText.classList.remove('show');
+    void perfectText.offsetWidth;
+    perfectText.classList.add('show');
+}
+
+const menu = document.getElementById('menu');
+const playButton = document.getElementById('play-button');
+
+playButton.addEventListener('click', () => {
+    startAudio();
+    menu.hidden = true;
+    passed = false;
+    restartGame();
+})
 
 let lastTime = 0;
 
 function gameLoop(time) {
     const dt = Math.min((time - lastTime) / 1000, 0.05);
     lastTime = time;
+
+    if (gameState === 'menu') {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        requestAnimationFrame(gameLoop);
+        return;
+    }
+
     updateShape(dt);
     updatePieces(dt);
     updateLabels(dt);

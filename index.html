@@ -3,11 +3,49 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Document</title>
+    <title>Shape Splitter</title>
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
     <canvas id="game"></canvas>
+    <div id="flash"></div>
+    <div id="perfect">Perfect !!</div>
+    <div id="menu" class="menu">
+        <section class="panel main">
+            <h1 class="title">Shape Splitter</h1>
+            <p class="tagline">Cut every shape exactly in half.</p>
+            <button id="play-button" class="button primary">Play</button>
+            <a class="button" href="#how">How to Play</a>
+            <a class="button" href="#about">About</a>
+        </section>
+
+        <section id="how" class="panel">
+            <h2 class="heading">How to Play</h2>
+            <div class="card">
+                <ul>
+                    <li>Shapes slide in from any side, then slow down</li>
+                    <li>Press, drag and let go of it to draw a straight line across a shape.</li>
+                    <li>Your line must start and end outside the shape</li>
+                    <li>Cut as close <strong> 50 / 50</strong> as you can. <strong>45 / 55</strong> or better scores <strong>+1</strong></strong></li>
+                    <li>A worse cut, or a shape that gets away, costs <strong>1 point</strong></li>
+                    <li>Reach the goal before the <strong>60 seconds</strong> run out to clear the level.</li>
+                    <li>Higher levels bring smaller, faster and stranger shapes</li>
+                </ul>
+            </div>
+            <a class="button" href="#">Back</a>
+        </section>
+
+        <section id="about" class="panel">
+            <h2 class="heading">About</h2>
+            <div class="card">
+                <p>Shape Splitter is a game about splitting things fairly. Every shape has to be cut into 2 equal halves with one straight line</p>
+                <p>Made by <strong>Rohan Seshasai Vasa</strong>.</p>
+                <p>Built using HTML, CSS and JavaScript. The sounds are made in with the Web Audio API.</p>
+            </div>
+            <a class="button" href="#">Black</a>
+        </section>
+
+    </div>
     <p class="height"></p>
     <p class="width"></p>
     <script src="script.js"></script>
